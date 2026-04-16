@@ -33,6 +33,11 @@ let todos = [
 
 
 /* GET all */
+app.get('/', (req, res) => {
+  res.send('Todo API is running...');
+});
+
+
 app.get('/todos', (req, res, next) => {
   res.json(todos);
 });
