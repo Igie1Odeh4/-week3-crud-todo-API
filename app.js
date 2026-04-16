@@ -2,95 +2,164 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const express = require('express');
+const cors = require('cors');
+const errorhandler = require('./middlewares/errorHandler.js');
+
+const validateTodo = require('./middlewares/validator.js');
+
+
 const app = express();
+const logRequest = require('./middlewares/logger.js');
+
+
+
 app.use(express.json());
 
-const { body, validationResult } = require('express-validator');
+const corsOptions = {
+  origin: [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500"
+  ]
+};
+app.use(cors(corsOptions));
+
+app.use(logRequest);
 
 let todos = [
   { id: 1, task: 'Learn Node.js', completed: false },
   { id: 2, task: 'Build CRUD API', completed: false },
 ];
 
-// ✅ Validation middleware
-const validateTodo = [
-  body('task').isString().notEmpty().withMessage('Task is required'),
-];
 
-// GET all
-app.get('/todos', (req, res) => {
+
+/* GET all */
+app.get('/todos', (req, res, next) => {
   res.json(todos);
 });
 
-// ✅ ACTIVE FIRST
-app.get('/todos/active', (req, res) => {
-  const active = todos.filter(t => !t.completed);
-  res.json(active);
-});
+/* GET active */
+app.get('/todos/:id', (req, res, next) => {
 
-// GET by ID
-app.get('/todos/:id', (req, res) => {
-  const todo = todos.find(t => t.id === parseInt(req.params.id));
-  if (!todo) return res.status(404).json({ message: 'Todo not found' });
-  res.json(todo);
-});
+  try {
 
-// ✅ SINGLE POST (with validation)
-app.post('/todos', validateTodo, (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    const id = Number(req.params.id);
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        message: "Invalid ID"
+      });
+    }
+
+    const todo = todos.find(t => t.id === id);
+
+    if (!todo) {
+      return res.status(404).json({
+        message: 'Todo not found'
+      });
+    }
+
+    res.json(todo);
+
+  } catch (err) {
+    next(err);
   }
+
+});
+
+/* POST */
+app.post('/todos', validateTodo, (req, res, next) => {
+  try {
 
   const newTodo = {
     id: Date.now(),
     task: req.body.task,
-    completed: false
+    completed: req.body.completed || false
   };
 
   todos.push(newTodo);
-  res.status(201).json(newTodo);
+
+  res.status(201).json({
+    message: 'Todo created successfully',
+    data: newTodo
+  });
+
+} catch (err) {
+  next(err);
+}
 });
 
-// PATCH with validation
-app.patch('/todos/:id', (req, res) => {
-  const todo = todos.find(t => t.id === parseInt(req.params.id));
-  if (!todo) return res.status(404).json({ message: 'Todo not found' });
 
+
+/* PATCH */
+app.patch('/todos/:id', validateTodo, (req, res, next) => {
+
+  try {
+
+  const id = Number(req.params.id);
+
+  const todo = todos.find(t => t.id === id);
+
+  if (!todo)
+    return res.status(404).json({
+      message: 'Todo not found'
+    });
+  
   const { task, completed } = req.body;
 
-  if (task !== undefined && typeof task !== 'string') {
-    return res.status(400).json({ error: 'Task must be string' });
+  if (task !== undefined)
+    todo.task = task;
+
+  if (completed !== undefined)
+    todo.completed = completed;
+
+ return res.json({
+      message: "Todo updated successfully",
+      data: todo
+    });
+
+  } catch (err) {
+    next(err);
   }
 
-  if (completed !== undefined && typeof completed !== 'boolean') {
-    return res.status(400).json({ error: 'Completed must be boolean' });
-  }
-
-  if (task !== undefined) todo.task = task;
-  if (completed !== undefined) todo.completed = completed;
-
-  res.json(todo);
 });
 
-// DELETE Remove
-app.delete('/todos/:id', (req, res) => {
-  const id = parseInt(req.params.id);
+/* DELETE */
+app.delete('/todos/:id', (req, res, next) => {
+
+  try {
+  const id = Number(req.params.id);
+
   const initialLength = todos.length;
-  todos = todos.filter((t) => t.id !== id); // Array.filter() – non-destructive
+
+  todos = todos.filter(t => t.id !== id);
+
   if (todos.length === initialLength)
-    return res.status(404).json({ error: 'Not found' });
-  res.status(204).send(); // Silent success
+    return res.status(404).json({
+      error: 'Not found'
+    });
+  
+  res.status(204).send();
+
+}
+ catch (err) {
+    next(err);
+  }
 });
 
-app.get('/todos/active', (req, res) => {
-  const active = todos.filter((t) => !t.completed);
-  res.json(active); // Custom Read!
+app.get('/completed', (req, res, next) => {
+  try {
+  const completedTodos = todos.filter(t => t.completed === true);
+  res.json(completedTodos);
+} catch (err) {
+  next(err);
+}
+
 });
 
-app.use((err, req, res, next) => {
-  res.status(500).json({ error: 'Server error!' });
-});
+app.use(errorhandler);
 
-const PORT = 3002;
-app.listen(PORT, () => console.log(`Server on port ${PORT}`));
+const PORT = process.env.PORT || 3002;
+
+app.listen(PORT, () =>
+  console.log(`Server on port ${PORT}`)
+);
